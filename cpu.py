@@ -389,10 +389,6 @@ class CPU:
         msb = self.data_bus
         return self.get_word(msb, lsb)
 
-    def set_stackpointer(self, sp):
-        self.S.value = (sp >> 8) & 0xFF
-        self.P.value = sp & 0xFF
-
     def pop_flags(self, psw):
         # set flags based on processor status word low byte
         # SZ0A0P1C
@@ -461,14 +457,30 @@ class CPU:
         self.set_flags_zsp(result)
         self.A.value = result & 0xFF
 
-    ##################################################
-    # Data Transfer Instructions                     #
-    ##################################################
-
     def update_logical_result(self, result):
         self.Carry = 0
         self.set_flags_zsp(result)
         self.A.value = result & 0xFF
+
+    def push_stack(self):
+        """Push value on data bus to next stack location"""
+        self.address_bus = (self.get_word(self.S.value, self.P.value) - 1) & 0xFFFF
+        self.memory_write()
+        self.set_stackpointer(self.address_bus)
+
+    def pop_stack(self):
+        """Pop value at top of stack to data bus"""
+        self.address_bus = self.get_word(self.S.value, self.P.value)
+        self.memory_read()
+        self.set_stackpointer((self.address_bus + 1) & 0xFFFF)
+
+    def set_stackpointer(self, sp):
+        self.S.value = (sp >> 8) & 0xFF
+        self.P.value = sp & 0xFF
+
+    ##################################################
+    # Data Transfer Instructions                     #
+    ##################################################
 
     def mov(self):
         """
@@ -942,13 +954,13 @@ class CPU:
         # Complement carry - (negate Carry flag) (Cy) <- ~(Cy)
         self.Carry = self.Carry ^ 0x01
 
-    ##########################################################################
-    # Branch Instructions
-    ##########################################################################
-
     def stc(self):
         # Set Carry  - (Cy) <- 1
         self.Carry = 1
+
+    ##########################################################################
+    # Branch Instructions
+    ##########################################################################
 
     def jmp(self):
         # Jump   (PC) <- (Byte3)(Byte2)
@@ -1012,17 +1024,10 @@ class CPU:
 
     def call(self):
         # Call ((SP)-1) <- (PCH), ((SP)-2) <- (PCL), (SP) < SP - 2, (PC) <- (Byte3)(Byte2)
-        sp = self.get_word(self.S.value, self.P.value)
-        sp -= 1
-        self.address_bus = sp
         self.data_bus = self.PC >> 8  # PC high byte
-        self.memory_write()
-        sp -= 1
-        self.address_bus = sp
+        self.push_stack()
         self.data_bus = self.PC & 0xFF  # PC low byte
-        self.memory_write()
-        self.S.value = (sp >> 8)
-        self.P.value = sp & 0xFF
+        self.push_stack()
         self.PC = self.get_direct_address()
 
     def cnz(self):
@@ -1091,16 +1096,10 @@ class CPU:
 
     def ret(self):
         # Return  (PCH) <- ((SP)), (PCL) <- ((SP+1)), (SP) <- (SP) + 2
-        sp = self.get_word(self.S.value, self.P.value)
-        self.address_bus = sp
-        self.memory_read()
+        self.pop_stack()
         msb = self.data_bus
-        sp += 1
-        self.address_bus = sp
-        self.memory_read()
+        self.pop_stack()
         lsb = self.data_bus
-        sp += 1
-        self.set_stackpointer(sp)
         self.PC = self.get_word(msb, lsb)
 
     def rnz(self):
@@ -1145,17 +1144,11 @@ class CPU:
 
     def rst(self):
         # Reset nnn ((SP)-1) <- (PCH), ((SP)-2) <- (PCL), (SP) < SP - 2, (PC) <- nnn*8
-        nnn = (self.IR >> 3) & 0x07  # 3 bit number from instruction
-        sp = self.get_word(self.S.value, self.P.value)
-        sp -= 1
-        self.address_bus = sp
         self.data_bus = self.PC >> 8  # PC high byte
-        self.memory_write()
-        sp -= 1
-        self.address_bus = sp
+        self.push_stack()
         self.data_bus = self.PC & 0xFF  # PC low byte
-        self.memory_write()
-        self.set_stackpointer(sp)
+        self.push_stack()
+        nnn = (self.IR >> 3) & 0x07  # 3 bit number from instruction
         self.PC = self.get_word(0, nnn << 3)
 
     ####################################################################################
@@ -1169,56 +1162,32 @@ class CPU:
     def push(self):
         # Push register pair  ((SP) -1 ) <- (rh), ((SP) -2) <- (rl), (SP) <- (SP) -2
         rh, rl = self.decode_rp()
-        sp = self.get_word(self.S.value, self.P.value)
-        sp -= 1
-        self.address_bus = sp
         self.data_bus = rh.value
-        self.memory_write()
-        sp -= 1
-        self.address_bus = sp
+        self.push_stack()
         self.data_bus = rl.value
-        self.memory_write()
-        self.set_stackpointer(sp)
+        self.push_stack()
 
     def pushpsw(self):
         # Push Status word ((SP)-1) <- (A), ((SP)-2) <- (F)
-        sp = self.get_word(self.S.value, self.P.value)
-        sp -= 1
-        self.address_bus = sp
         self.data_bus = self.A.value
-        self.memory_write()
-        sp -= 1
-        self.address_bus = sp
+        self.push_stack()
         self.data_bus = self.F
-        self.memory_write()
-        self.set_stackpointer(sp)
+        self.push_stack()
 
     def pop(self):
         # Pop register pair (rh) <- (SP), (rl) <- ((SP) +1),  (SP) <- (SP) +2
         rh, rl = self.decode_rp()
-        sp = self.get_word(self.S.value, self.P.value)
-        self.address_bus = sp
-        self.memory_read()
+        self.pop_stack()
         rh.value = self.data_bus
-        sp += 1
-        self.address_bus = sp
-        self.memory_read()
+        self.pop_stack()
         rl.value = self.data_bus
-        sp += 1
-        self.set_stackpointer(sp)
 
     def poppsw(self):
         # Pop Status Word (F) <- (SP), (A) <- ((SP) +1),  (SP) <- (SP) +2
-        sp = self.get_word(self.S.value, self.P.value)
-        self.address_bus = sp
-        self.memory_read()
+        self.pop_stack()
         self.pop_flags(self.data_bus)  # set all the Flags according to the data byte
-        sp += 1
-        self.address_bus = sp
-        self.memory_read()
+        self.pop_stack()
         self.A.value = self.data_bus
-        sp += 1
-        self.set_stackpointer(sp)
 
     def xthl(self):
         # Exchange Stack with HL  (L) <-> ((SP), (H) <-> ((SP) +1)
@@ -1241,33 +1210,33 @@ class CPU:
         self.set_stackpointer(self.get_word(self.H.value, self.L.value))
 
     def in_port(self):
-        # Input (A) <- (data)
-        if self.data_bus == 1: # psuedo keyboard input port
+        """Input (A) <- (data)"""
+        if self.data_bus == 1: # pseudo keyboard input port
             # cheat and read the buffer direct rather than pass through data bus
             if len(self.input_buffer) > 0:
                 self.A.value = self.input_buffer.pop(0)  # pop next item
         self.cycles += 2
 
     def out_port(self):
-        # Output (data) <- (A)
-        if self.data_bus == 2: # psuedo terminal output port
+        """Output (data) <- (A)"""
+        if self.data_bus == 2: # pseudo terminal output port
             self.output_buffer.append(self.A.value)
         self.cycles += 2
 
     def ei(self):
-        # enable interrupt
+        """Enable interrupts"""
         # todo implement interrupts
         pass
 
     def di(self):
-        # disable interrupts
+        """Disable interrupts"""
         # todo implement interrupts
         pass
 
     def hlt(self):
-        # Halt
+        """Halt processor"""
         self.halt = True
 
     def nop(self):
-        # do nothing
-        pass
+        """Do nothing - nop instruction"""
+
