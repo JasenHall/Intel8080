@@ -13,8 +13,11 @@ class CPU:
         self.cycles = 0
         self.address_bus = 0  # 16 bit
         self.data_bus = 0  # 8 bit
-        self.instruction_register = None
+        self.IR = None
+        self.IR_disasm = None
         self.halt = False
+        self.input_buffer = []
+        self.output_buffer = []
         #################################
         #    registers                  #
         #################################
@@ -39,38 +42,274 @@ class CPU:
         self.opcodes = {
             0x00: {"Instruction": "NOP", "Bytes": 1, "Method": self.nop},
             0x01: {"Instruction": "LXI B,{:04X}", "Bytes": 3, "Method": self.lxi},
-            0x03: {"Instruction": "STAX B", "Bytes": 1, "Cycles": 7, "Method": self.stax},
-            0x04: {"Instruction": "INX B", "Bytes": 1, "Cycles": 5, "Method": self.inx},
-            0x05: {"Instruction": "INR B", "Bytes": 1, "Cycles": 4, "Method": self.dcr},
-            0x06: {"Instruction": "MVI B,{:02X}", "Bytes": 2, "Cycles": 10, "Method": self.lxi},
-            0x07: {"Instruction": "RLC", "Bytes": 1, "Cycles": 7, "Method": self.rlc},
-            0x08: {"Instruction": "*NOP", "Bytes": 1, "Cycles": 5, "Method": self.nop},
-            0x09: {"Instruction": "DAD B", "Bytes": 1, "Cycles": 4, "Method": self.dad},
-            0x0A: {"Instruction": "LDAX B", "Bytes": 3, "Cycles": 10, "Method": self.ldax},
-            0x0B: {"Instruction": "DCX B", "Bytes": 1, "Cycles": 7, "Method": self.dcx},
-            0x0C: {"Instruction": "INR C", "Bytes": 1, "Cycles": 5, "Method": self.inr},
-            0x0D: {"Instruction": "DCR C", "Bytes": 1, "Cycles": 4, "Method": self.dcr},
-            0x0E: {"Instruction": "MVI C,{:02X}", "Bytes": 2, "Cycles": 10, "Method": self.mvi},
-            0x0F: {"Instruction": "RRC", "Bytes": 1, "Cycles": 7, "Method": self.rrc},
+            0x03: {"Instruction": "STAX B", "Bytes": 1, "Method": self.stax},
+            0x04: {"Instruction": "INX B", "Bytes": 1, "Method": self.inx},
+            0x05: {"Instruction": "INR B", "Bytes": 1, "Method": self.dcr},
+            0x06: {"Instruction": "MVI B,{:02X}", "Bytes": 2, "Method": self.lxi},
+            0x07: {"Instruction": "RLC", "Bytes": 1, "Method": self.rlc},
+            0x08: {"Instruction": "*NOP", "Bytes": 1, "Method": self.nop},
+            0x09: {"Instruction": "DAD B", "Bytes": 1, "Method": self.dad},
+            0x0A: {"Instruction": "LDAX B", "Bytes": 3, "Method": self.ldax},
+            0x0B: {"Instruction": "DCX B", "Bytes": 1, "Method": self.dcx},
+            0x0C: {"Instruction": "INR C", "Bytes": 1, "Method": self.inr},
+            0x0D: {"Instruction": "DCR C", "Bytes": 1, "Method": self.dcr},
+            0x0E: {"Instruction": "MVI C,{:02X}", "Bytes": 2, "Method": self.mvi},
+            0x0F: {"Instruction": "RRC", "Bytes": 1, "Method": self.rrc},
 
-            0x10: {"Instruction": "*NOP", "Bytes": 1, "Cycles": 5, "Method": self.nop},
-            0x11: {"Instruction": "LXI D,{:04X}", "Bytes": 2, "Cycles": 4, "Method": self.lxi},
-            0x12: {"Instruction": "STAX D", "Bytes": 1, "Cycles": 10, "Method": self.stax},
-            0x13: {"Instruction": "INX D", "Bytes": 1, "Cycles": 7, "Method": self.inx},
-            0x14: {"Instruction": "INR D", "Bytes": 1, "Cycles": 5, "Method": self.inr},
-            0x15: {"Instruction": "DCR D", "Bytes": 1, "Cycles": 4, "Method": self.dcr},
-            0x16: {"Instruction": "MVI D,{:02X}", "Bytes": 2, "Cycles": 10, "Method": self.mvi},
-            0x17: {"Instruction": "RAL", "Bytes": 1, "Cycles": 7, "Method": self.ral},
-            0x18: {"Instruction": "*NOP", "Bytes": 1, "Cycles": 5, "Method": self.nop},
-            0x19: {"Instruction": "DAD D", "Bytes": 1, "Cycles": 4, "Method": self.dad},
-            0x1A: {"Instruction": "LDAX D", "Bytes": 1, "Cycles": 10, "Method": self.ldax},
-            0x1B: {"Instruction": "DCX D", "Bytes": 1, "Cycles": 7, "Method": self.dcx},
-            0x1C: {"Instruction": "INR E", "Bytes": 1, "Cycles": 5, "Method": self.inr},
-            0x1D: {"Instruction": "DCR E", "Bytes": 1, "Cycles": 10, "Method": self.dcr},
-            0x1E: {"Instruction": "MVI E,{:02X}", "Bytes": 2, "Cycles": 7, "Method": self.mvi},
-            0x1F: {"Instruction": "RAR", "Bytes": 1, "Cycles": 5, "Method": self.rar},
+            0x10: {"Instruction": "*NOP", "Bytes": 1, "Method": self.nop},
+            0x11: {"Instruction": "LXI D,{:04X}", "Bytes": 3, "Method": self.lxi},
+            0x12: {"Instruction": "STAX D", "Bytes": 1, "Method": self.stax},
+            0x13: {"Instruction": "INX D", "Bytes": 1, "Method": self.inx},
+            0x14: {"Instruction": "INR D", "Bytes": 1, "Method": self.inr},
+            0x15: {"Instruction": "DCR D", "Bytes": 1, "Method": self.dcr},
+            0x16: {"Instruction": "MVI D,{:02X}", "Bytes": 2, "Method": self.mvi},
+            0x17: {"Instruction": "RAL", "Bytes": 1, "Method": self.ral},
+            0x18: {"Instruction": "*NOP", "Bytes": 1, "Method": self.nop},
+            0x19: {"Instruction": "DAD D", "Bytes": 1, "Method": self.dad},
+            0x1A: {"Instruction": "LDAX D", "Bytes": 1, "Method": self.ldax},
+            0x1B: {"Instruction": "DCX D", "Bytes": 1, "Method": self.dcx},
+            0x1C: {"Instruction": "INR E", "Bytes": 1, "Method": self.inr},
+            0x1D: {"Instruction": "DCR E", "Bytes": 1, "Method": self.dcr},
+            0x1E: {"Instruction": "MVI E,{:02X}", "Bytes": 2, "Method": self.mvi},
+            0x1F: {"Instruction": "RAR", "Bytes": 1, "Method": self.rar},
 
-            0x76: {"Instruction": "HLT", "Bytes": 1, "Cycles": 5, "Method": self.hlt},
+            0x20: {"Instruction": "*NOP", "Bytes": 1, "Method": self.nop},
+            0x21: {"Instruction": "LXI H,{:04X}", "Bytes": 3, "Method": self.lxi},
+            0x22: {"Instruction": "SHLD {:04X}", "Bytes": 3, "Method": self.shld},
+            0x23: {"Instruction": "INX H", "Bytes": 1, "Method": self.inx},
+            0x24: {"Instruction": "INR H", "Bytes": 1, "Method": self.inr},
+            0x25: {"Instruction": "DCR H", "Bytes": 1, "Method": self.dcr},
+            0x26: {"Instruction": "MVI H,{:02X}", "Bytes": 2, "Method": self.mvi},
+            0x27: {"Instruction": "DAA", "Bytes": 1, "Method": self.daa},
+            0x28: {"Instruction": "*NOP", "Bytes": 1, "Method": self.nop},
+            0x29: {"Instruction": "DAD H", "Bytes": 1, "Method": self.dad},
+            0x2A: {"Instruction": "LHLD {:04x}", "Bytes": 3, "Method": self.lhld},
+            0x2B: {"Instruction": "DCX H", "Bytes": 1, "Method": self.dcx},
+            0x2C: {"Instruction": "INR L", "Bytes": 1, "Method": self.inr},
+            0x2D: {"Instruction": "DCR L", "Bytes": 1, "Method": self.dcr},
+            0x2E: {"Instruction": "MVI L,{:02X}", "Bytes": 2, "Method": self.mvi},
+            0x2F: {"Instruction": "CMA", "Bytes": 1, "Method": self.cma},
+
+            0x30: {"Instruction": "*NOP", "Bytes": 1, "Method": self.nop},
+            0x31: {"Instruction": "LXI SP,{:04X}", "Bytes": 3, "Method": self.lxi},
+            0x32: {"Instruction": "STA {:04X}", "Bytes": 3, "Method": self.sta},
+            0x33: {"Instruction": "INX SP", "Bytes": 1, "Method": self.inx},
+            0x34: {"Instruction": "INR M", "Bytes": 1, "Method": self.inr},
+            0x35: {"Instruction": "DCR M", "Bytes": 1, "Method": self.dcr},
+            0x36: {"Instruction": "MVI M,{:02X}", "Bytes": 2, "Method": self.mvi},
+            0x37: {"Instruction": "STC", "Bytes": 1, "Method": self.stc},
+            0x38: {"Instruction": "*NOP", "Bytes": 1, "Method": self.nop},
+            0x39: {"Instruction": "DAD SP", "Bytes": 1, "Method": self.dad},
+            0x3A: {"Instruction": "LDA {:04x}", "Bytes": 3, "Method": self.lda},
+            0x3B: {"Instruction": "DCX SP", "Bytes": 1, "Method": self.dcx},
+            0x3C: {"Instruction": "INR A", "Bytes": 1, "Method": self.inr},
+            0x3D: {"Instruction": "DCR A", "Bytes": 1, "Method": self.dcr},
+            0x3E: {"Instruction": "MVI A,{:02X}", "Bytes": 2, "Method": self.mvi},
+            0x3F: {"Instruction": "CMC", "Bytes": 1, "Method": self.cmc},
+
+            0x40: {"Instruction": "MOV B,B", "Bytes": 1, "Method": self.mov},
+            0x41: {"Instruction": "MOV B,C", "Bytes": 1, "Method": self.mov},
+            0x42: {"Instruction": "MOV B,D", "Bytes": 1, "Method": self.mov},
+            0x43: {"Instruction": "MOV B,E", "Bytes": 1, "Method": self.mov},
+            0x44: {"Instruction": "MOV B,H", "Bytes": 1, "Method": self.mov},
+            0x45: {"Instruction": "MOV B,L", "Bytes": 1, "Method": self.mov},
+            0x46: {"Instruction": "MOV B,M", "Bytes": 1, "Method": self.movrm},
+            0x47: {"Instruction": "MOV B,A", "Bytes": 1, "Method": self.mov},
+            0x48: {"Instruction": "MOV C,B", "Bytes": 1, "Method": self.mov},
+            0x49: {"Instruction": "MOV C,C", "Bytes": 1, "Method": self.mov},
+            0x4A: {"Instruction": "MOV C,D", "Bytes": 1, "Method": self.mov},
+            0x4B: {"Instruction": "MOV C,E", "Bytes": 1, "Method": self.mov},
+            0x4C: {"Instruction": "MOV C,H", "Bytes": 1, "Method": self.mov},
+            0x4D: {"Instruction": "MOV C,L", "Bytes": 1, "Method": self.mov},
+            0x4E: {"Instruction": "MOV C,M", "Bytes": 1, "Method": self.movrm},
+            0x4F: {"Instruction": "MOV C,A", "Bytes": 1, "Method": self.mov},
+
+            0x50: {"Instruction": "MOV D,B", "Bytes": 1, "Method": self.mov},
+            0x51: {"Instruction": "MOV D,C", "Bytes": 1, "Method": self.mov},
+            0x52: {"Instruction": "MOV D,D", "Bytes": 1, "Method": self.mov},
+            0x53: {"Instruction": "MOV D,E", "Bytes": 1, "Method": self.mov},
+            0x54: {"Instruction": "MOV D,H", "Bytes": 1, "Method": self.mov},
+            0x55: {"Instruction": "MOV D,L", "Bytes": 1, "Method": self.mov},
+            0x56: {"Instruction": "MOV D,M", "Bytes": 1, "Method": self.movrm},
+            0x57: {"Instruction": "MOV D,A", "Bytes": 1, "Method": self.mov},
+            0x58: {"Instruction": "MOV E,B", "Bytes": 1, "Method": self.mov},
+            0x59: {"Instruction": "MOV E,C", "Bytes": 1, "Method": self.mov},
+            0x5A: {"Instruction": "MOV E,D", "Bytes": 1, "Method": self.mov},
+            0x5B: {"Instruction": "MOV E,E", "Bytes": 1, "Method": self.mov},
+            0x5C: {"Instruction": "MOV E,H", "Bytes": 1, "Method": self.mov},
+            0x5D: {"Instruction": "MOV E,L", "Bytes": 1, "Method": self.mov},
+            0x5E: {"Instruction": "MOV E,M", "Bytes": 1, "Method": self.movrm},
+            0x5F: {"Instruction": "MOV E,A", "Bytes": 1, "Method": self.mov},
+
+            0x60: {"Instruction": "MOV H,B", "Bytes": 1, "Method": self.mov},
+            0x61: {"Instruction": "MOV H,C", "Bytes": 1, "Method": self.mov},
+            0x62: {"Instruction": "MOV H,D", "Bytes": 1, "Method": self.mov},
+            0x63: {"Instruction": "MOV H,E", "Bytes": 1, "Method": self.mov},
+            0x64: {"Instruction": "MOV H,H", "Bytes": 1, "Method": self.mov},
+            0x65: {"Instruction": "MOV H,L", "Bytes": 1, "Method": self.mov},
+            0x66: {"Instruction": "MOV H,M", "Bytes": 1, "Method": self.movrm},
+            0x67: {"Instruction": "MOV H,A", "Bytes": 1, "Method": self.mov},
+            0x68: {"Instruction": "MOV L,B", "Bytes": 1, "Method": self.mov},
+            0x69: {"Instruction": "MOV L,C", "Bytes": 1, "Method": self.mov},
+            0x6A: {"Instruction": "MOV L,D", "Bytes": 1, "Method": self.mov},
+            0x6B: {"Instruction": "MOV L,E", "Bytes": 1, "Method": self.mov},
+            0x6C: {"Instruction": "MOV L,H", "Bytes": 1, "Method": self.mov},
+            0x6D: {"Instruction": "MOV L,L", "Bytes": 1, "Method": self.mov},
+            0x6E: {"Instruction": "MOV L,M", "Bytes": 1, "Method": self.movrm},
+            0x6F: {"Instruction": "MOV L,A", "Bytes": 1, "Method": self.mov},
+
+            0x70: {"Instruction": "MOV M,B", "Bytes": 1, "Method": self.movmr},
+            0x71: {"Instruction": "MOV M,C", "Bytes": 1, "Method": self.movmr},
+            0x72: {"Instruction": "MOV M,D", "Bytes": 1, "Method": self.movmr},
+            0x73: {"Instruction": "MOV M,E", "Bytes": 1, "Method": self.movmr},
+            0x74: {"Instruction": "MOV M,H", "Bytes": 1, "Method": self.movmr},
+            0x75: {"Instruction": "MOV M,L", "Bytes": 1, "Method": self.movmr},
+            0x76: {"Instruction": "HLT", "Bytes": 1, "Method": self.hlt},
+            0x77: {"Instruction": "MOV M,A", "Bytes": 1, "Method": self.movmr},
+            0x78: {"Instruction": "MOV A,B", "Bytes": 1, "Method": self.mov},
+            0x79: {"Instruction": "MOV A,C", "Bytes": 1, "Method": self.mov},
+            0x7A: {"Instruction": "MOV A,D", "Bytes": 1, "Method": self.mov},
+            0x7B: {"Instruction": "MOV A,E", "Bytes": 1, "Method": self.mov},
+            0x7C: {"Instruction": "MOV A,H", "Bytes": 1, "Method": self.mov},
+            0x7D: {"Instruction": "MOV A,L", "Bytes": 1, "Method": self.mov},
+            0x7E: {"Instruction": "MOV A,M", "Bytes": 1, "Method": self.movrm},
+            0x7F: {"Instruction": "MOV A,A", "Bytes": 1, "Method": self.mov},
+
+            0x80: {"Instruction": "ADD B", "Bytes": 1, "Method": self.add},
+            0x81: {"Instruction": "ADD C", "Bytes": 1, "Method": self.add},
+            0x82: {"Instruction": "ADD D", "Bytes": 1, "Method": self.add},
+            0x83: {"Instruction": "ADD E", "Bytes": 1, "Method": self.add},
+            0x84: {"Instruction": "ADD H", "Bytes": 1, "Method": self.add},
+            0x85: {"Instruction": "ADD L", "Bytes": 1, "Method": self.add},
+            0x86: {"Instruction": "ADD M", "Bytes": 1, "Method": self.addm},
+            0x87: {"Instruction": "ADD A", "Bytes": 1, "Method": self.add},
+            0x88: {"Instruction": "ADC B", "Bytes": 1, "Method": self.adc},
+            0x89: {"Instruction": "ADC C", "Bytes": 1, "Method": self.adc},
+            0x8A: {"Instruction": "ADC D", "Bytes": 1, "Method": self.adc},
+            0x8B: {"Instruction": "ADC E", "Bytes": 1, "Method": self.adc},
+            0x8C: {"Instruction": "ADC H", "Bytes": 1, "Method": self.adc},
+            0x8D: {"Instruction": "ADC L", "Bytes": 1, "Method": self.adc},
+            0x8E: {"Instruction": "ADC M", "Bytes": 1, "Method": self.adcm},
+            0x8F: {"Instruction": "ADC A", "Bytes": 1, "Method": self.adc},
+
+            0x90: {"Instruction": "SUB B", "Bytes": 1, "Method": self.sub},
+            0x91: {"Instruction": "SUB C", "Bytes": 1, "Method": self.sub},
+            0x92: {"Instruction": "SUB D", "Bytes": 1, "Method": self.sub},
+            0x93: {"Instruction": "SUB E", "Bytes": 1, "Method": self.sub},
+            0x94: {"Instruction": "SUB H", "Bytes": 1, "Method": self.sub},
+            0x95: {"Instruction": "SUB L", "Bytes": 1, "Method": self.sub},
+            0x96: {"Instruction": "SUB M", "Bytes": 1, "Method": self.subm},
+            0x97: {"Instruction": "SUB A", "Bytes": 1, "Method": self.sub},
+            0x98: {"Instruction": "SBB B", "Bytes": 1, "Method": self.sbb},
+            0x99: {"Instruction": "SBB C", "Bytes": 1, "Method": self.sbb},
+            0x9A: {"Instruction": "SBB D", "Bytes": 1, "Method": self.sbb},
+            0x9B: {"Instruction": "SBB E", "Bytes": 1, "Method": self.sbb},
+            0x9C: {"Instruction": "SBB H", "Bytes": 1, "Method": self.sbb},
+            0x9D: {"Instruction": "SBB L", "Bytes": 1, "Method": self.sbb},
+            0x9E: {"Instruction": "SBB M", "Bytes": 1, "Method": self.sbbm},
+            0x9F: {"Instruction": "SBB A", "Bytes": 1, "Method": self.sbb},
+
+            0xA0: {"Instruction": "ANA B", "Bytes": 1, "Method": self.ana},
+            0xA1: {"Instruction": "ANA C", "Bytes": 1, "Method": self.ana},
+            0xA2: {"Instruction": "ANA D", "Bytes": 1, "Method": self.ana},
+            0xA3: {"Instruction": "ANA E", "Bytes": 1, "Method": self.ana},
+            0xA4: {"Instruction": "ANA H", "Bytes": 1, "Method": self.ana},
+            0xA5: {"Instruction": "ANA L", "Bytes": 1, "Method": self.ana},
+            0xA6: {"Instruction": "ANA M", "Bytes": 1, "Method": self.anam},
+            0xA7: {"Instruction": "ANA A", "Bytes": 1, "Method": self.ana},
+            0xA8: {"Instruction": "SBB B", "Bytes": 1, "Method": self.sbb},
+            0xA9: {"Instruction": "SBB C", "Bytes": 1, "Method": self.sbb},
+            0xAA: {"Instruction": "SBB D", "Bytes": 1, "Method": self.sbb},
+            0xAB: {"Instruction": "SBB E", "Bytes": 1, "Method": self.sbb},
+            0xAC: {"Instruction": "SBB H", "Bytes": 1, "Method": self.sbb},
+            0xAD: {"Instruction": "SBB L", "Bytes": 1, "Method": self.sbb},
+            0xAE: {"Instruction": "SBB M", "Bytes": 1, "Method": self.sbbm},
+            0xAF: {"Instruction": "SBB A", "Bytes": 1, "Method": self.sbb},
+
+            0xB0: {"Instruction": "ORA B", "Bytes": 1, "Method": self.ora},
+            0xB1: {"Instruction": "ORA C", "Bytes": 1, "Method": self.ora},
+            0xB2: {"Instruction": "ORA D", "Bytes": 1, "Method": self.ora},
+            0xB3: {"Instruction": "ORA E", "Bytes": 1, "Method": self.ora},
+            0xB4: {"Instruction": "ORA H", "Bytes": 1, "Method": self.ora},
+            0xB5: {"Instruction": "ORA L", "Bytes": 1, "Method": self.ora},
+            0xB6: {"Instruction": "ORA M", "Bytes": 1, "Method": self.oram},
+            0xB7: {"Instruction": "ORA A", "Bytes": 1, "Method": self.ora},
+            0xB8: {"Instruction": "CMP B", "Bytes": 1, "Method": self.cmp},
+            0xB9: {"Instruction": "CMP C", "Bytes": 1, "Method": self.cmp},
+            0xBA: {"Instruction": "CMP D", "Bytes": 1, "Method": self.cmp},
+            0xBB: {"Instruction": "CMP E", "Bytes": 1, "Method": self.cmp},
+            0xBC: {"Instruction": "CMP H", "Bytes": 1, "Method": self.cmp},
+            0xBD: {"Instruction": "CMP L", "Bytes": 1, "Method": self.cmp},
+            0xBE: {"Instruction": "CMP M", "Bytes": 1, "Method": self.cmpm},
+            0xBF: {"Instruction": "CMP A", "Bytes": 1, "Method": self.cmp},
+
+            0xC0: {"Instruction": "RNZ", "Bytes": 1, "Method": self.rnz},
+            0xC1: {"Instruction": "POP B", "Bytes": 1, "Method": self.pop},
+            0xC2: {"Instruction": "JNZ {:04X}", "Bytes": 3, "Method": self.jnz},
+            0xC3: {"Instruction": "JMP {:04X}", "Bytes": 3, "Method": self.jmp},
+            0xC4: {"Instruction": "CNZ {:04X}", "Bytes": 3, "Method": self.cnz},
+            0xC5: {"Instruction": "PUSH B", "Bytes": 1, "Method": self.push},
+            0xC6: {"Instruction": "ADI {:02X}", "Bytes": 2, "Method": self.oram},
+            0xC7: {"Instruction": "RST 0", "Bytes": 1, "Method": self.rst},
+            0xC8: {"Instruction": "RZ", "Bytes": 1, "Method": self.rz},
+            0xC9: {"Instruction": "RET", "Bytes": 1, "Method": self.ret},
+            0xCA: {"Instruction": "JZ {:04X}", "Bytes": 3, "Method": self.jz},
+            0xCB: {"Instruction": "*JMP {:04X}", "Bytes": 3, "Method": self.jmp},
+            0xCC: {"Instruction": "CZ {:04X}", "Bytes": 3, "Method": self.cz},
+            0xCD: {"Instruction": "CALL {:04X}", "Bytes": 3, "Method": self.call},
+            0xCE: {"Instruction": "ACI {:02X}", "Bytes": 2, "Method": self.aci},
+            0xCF: {"Instruction": "RST 1", "Bytes": 1, "Method": self.rst},
+
+            0xD0: {"Instruction": "RNC", "Bytes": 1, "Method": self.rnc},
+            0xD1: {"Instruction": "POP D", "Bytes": 1, "Method": self.pop},
+            0xD2: {"Instruction": "JNC {:04X}", "Bytes": 3, "Method": self.jnc},
+            0xD3: {"Instruction": "OUT {:02X}", "Bytes": 2, "Method": self.out_port},
+            0xD4: {"Instruction": "CNC {:04X}", "Bytes": 3, "Method": self.cnc},
+            0xD5: {"Instruction": "PUSH D", "Bytes": 1, "Method": self.push},
+            0xD6: {"Instruction": "SUI {:02X}", "Bytes": 2, "Method": self.sui},
+            0xD7: {"Instruction": "RST 2", "Bytes": 1, "Method": self.rst},
+            0xD8: {"Instruction": "RC", "Bytes": 1, "Method": self.rc},
+            0xD9: {"Instruction": "*RET", "Bytes": 1, "Method": self.ret},
+            0xDA: {"Instruction": "JC {:04X}", "Bytes": 3, "Method": self.jc},
+            0xDB: {"Instruction": "IN {:02X}", "Bytes": 2, "Method": self.in_port},
+            0xDC: {"Instruction": "CC {:04X}", "Bytes": 3, "Method": self.cc},
+            0xDD: {"Instruction": "*CALL {:04X}", "Bytes": 3, "Method": self.call},
+            0xDE: {"Instruction": "SBI {:04X}", "Bytes": 3, "Method": self.aci},
+            0xDF: {"Instruction": "RST 3", "Bytes": 1, "Method": self.rst},
+
+            0xE0: {"Instruction": "RPO", "Bytes": 1, "Method": self.rpo},
+            0xE1: {"Instruction": "POP H", "Bytes": 1, "Method": self.pop},
+            0xE2: {"Instruction": "JPO {:04X}", "Bytes": 3, "Method": self.jpo},
+            0xE3: {"Instruction": "XTHL", "Bytes": 1, "Method": self.xthl},
+            0xE4: {"Instruction": "CPO {:04X}", "Bytes": 3, "Method": self.cpo},
+            0xE5: {"Instruction": "PUSH H", "Bytes": 1, "Method": self.push},
+            0xE6: {"Instruction": "ANI {:02X}", "Bytes": 2, "Method": self.ani},
+            0xE7: {"Instruction": "RST 4", "Bytes": 1, "Method": self.rst},
+            0xE8: {"Instruction": "RPE", "Bytes": 1, "Method": self.rpe},
+            0xE9: {"Instruction": "PCHL", "Bytes": 1, "Method": self.pchl},
+            0xEA: {"Instruction": "JPE {:04X}", "Bytes": 3, "Method": self.jpe},
+            0xEB: {"Instruction": "XCHG", "Bytes": 1, "Method": self.xchg},
+            0xEC: {"Instruction": "CPE {:04X}", "Bytes": 3, "Method": self.cpe},
+            0xED: {"Instruction": "*CALL {:04X}", "Bytes": 3, "Method": self.call},
+            0xEE: {"Instruction": "XRI {:02X}", "Bytes": 2, "Method": self.xri},
+            0xEF: {"Instruction": "RST 5", "Bytes": 1, "Method": self.rst},
+
+            0xF0: {"Instruction": "RP", "Bytes": 1, "Method": self.rp},
+            0xF1: {"Instruction": "POP PSW", "Bytes": 1, "Method": self.poppsw},
+            0xF2: {"Instruction": "JP {:04X}", "Bytes": 3, "Method": self.jp},
+            0xF3: {"Instruction": "DI", "Bytes": 1, "Method": self.di},
+            0xF4: {"Instruction": "CP {:04X}", "Bytes": 3, "Method": self.cp},
+            0xF5: {"Instruction": "PUSH PSW", "Bytes": 1, "Method": self.pushpsw},
+            0xF6: {"Instruction": "ORI {:02X}", "Bytes": 2, "Method": self.ori},
+            0xF7: {"Instruction": "RST 6", "Bytes": 1, "Method": self.rst},
+            0xF8: {"Instruction": "RPM", "Bytes": 1, "Method": self.rm},
+            0xF9: {"Instruction": "SPHL", "Bytes": 1, "Method": self.sphl},
+            0xFA: {"Instruction": "JM {:04X}", "Bytes": 3, "Method": self.jm},
+            0xFB: {"Instruction": "EI", "Bytes": 1, "Method": self.ei},
+            0xFC: {"Instruction": "CM {:04X}", "Bytes": 3, "Method": self.cm},
+            0xFD: {"Instruction": "*CALL {:04X}", "Bytes": 3, "Method": self.call},
+            0xFE: {"Instruction": "CPI {:02X}", "Bytes": 2, "Method": self.cpi},
+            0xFF: {"Instruction": "RST 7", "Bytes": 1, "Method": self.rst},
         }
 
     @property
@@ -102,11 +341,13 @@ class CPU:
         # get next instruction
         self.address_bus = self.PC
         self.memory_read()
-        self.instruction_register = self.data_bus
+        self.IR = self.data_bus
+        # not operational but information
+        self.IR_disasm = self.opcodes.get(self.IR)
         self.PC = (self.PC + 1) & 0xFFFF
 
     def execute_instruction(self):
-        opcode = self.instruction_register
+        opcode = self.IR
         self.opcodes.get(opcode).get("Method")()
 
     def fetch_byte(self):
@@ -166,7 +407,7 @@ class CPU:
         Decode register pair
         :return: rh, rl
         """
-        rp = (self.instruction_register & 0x30) >> 4
+        rp = (self.IR & 0x30) >> 4
         if rp == 0x00:
             return self.B, self.C
         elif rp == 0x01:
@@ -177,7 +418,7 @@ class CPU:
             return self.S, self.P
 
     def register_decode_dest(self):
-        r = (self.instruction_register & 0x38) >> 3
+        r = (self.IR & 0x38) >> 3
         if r == 0x00:
             return self.B
         elif r == 0x01:
@@ -190,11 +431,11 @@ class CPU:
             return self.H
         elif r == 0x05:
             return self.L
-        elif r == 0x08:
+        elif r == 0x07:
             return self.A
 
     def register_decode_source(self):
-        r = self.instruction_register & 0x08
+        r = self.IR & 0x08
         if r == 0x00:
             return self.B
         elif r == 0x01:
@@ -207,7 +448,7 @@ class CPU:
             return self.H
         elif r == 0x05:
             return self.L
-        elif r == 0x08:
+        elif r == 0x07:
             return self.A
 
     def set_flags_zsp(self, result):
@@ -904,7 +1145,7 @@ class CPU:
 
     def rst(self):
         # Reset nnn ((SP)-1) <- (PCH), ((SP)-2) <- (PCL), (SP) < SP - 2, (PC) <- nnn*8
-        nnn = (self.instruction_register >> 3) & 0x07  # 3 bit number from instruction
+        nnn = (self.IR >> 3) & 0x07  # 3 bit number from instruction
         sp = self.get_word(self.S.value, self.P.value)
         sp -= 1
         self.address_bus = sp
@@ -1001,16 +1242,16 @@ class CPU:
 
     def in_port(self):
         # Input (A) <- (data)
-        # need other devices to write to data bus
-        # todo finish implementation
-        self.A.value = self.data_bus
+        if self.data_bus == 1: # psuedo keyboard input port
+            # cheat and read the buffer direct rather than pass through data bus
+            if len(self.input_buffer) > 0:
+                self.A.value = self.input_buffer.pop(0)  # pop next item
         self.cycles += 2
 
     def out_port(self):
         # Output (data) <- (A)
-        # need other devices to write to data bus
-        # todo finish implementation
-        self.data_bus = self.A.value
+        if self.data_bus == 2: # psuedo terminal output port
+            self.output_buffer.append(self.A.value)
         self.cycles += 2
 
     def ei(self):
