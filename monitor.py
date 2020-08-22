@@ -8,6 +8,8 @@ class Monitor:
 
     def __init__(self, cpu):
         self.cpu = cpu
+        # set stack pointer
+        self.cpu.SP = 0xEE00
         self.current_address = 0
         self.command = ""
         self.operand = ""
@@ -21,6 +23,8 @@ class Monitor:
             "G": self.go,
             "S": self.step,
             "X": self.reset,
+            "SAVE": self.save,
+            "LOAD": self.load,
         }
 
     def disasm(self):
@@ -148,9 +152,25 @@ class Monitor:
 
     def parse(self, text):
         """Simple break down of commands for now"""
+        self.command = self.operand = ""
         if text != "":
+            text = text.split(" ")
+            print(text)
             self.command = text[0].upper()
-            self.operand = text[2:].upper()
+            if len(text) > 1:
+                self.operand = text[1].upper()
+
+    def load(self, filename="code"):
+        # always use .bin extension
+        filename = "".join([filename, ".bin"])
+        with open(filename, 'rb') as f:
+            self.cpu.memory[0x0000:] = f.read()  # load bin file starting at 0x0000
+
+    def save(self, filename="code"):
+        # always use .bin extension
+        filename = "".join([filename, ".bin"])
+        with open(filename, 'wb') as f:
+            f.write(self.cpu.memory)
 
 def main():
     cpu = CPU()
@@ -164,7 +184,7 @@ def main():
         mon.parse(text)
         if mon.command in mon.command_map:
             mon.command_map.get(mon.command)()
-            mon.command = mon.operand = None
+
 
 if __name__ == '__main__':
     main()
