@@ -431,7 +431,7 @@ class CPU:
             return self.A
 
     def register_decode_source(self):
-        r = self.IR & 0x08
+        r = self.IR & 0x07
         if r == 0x00:
             return self.B
         elif r == 0x01:
@@ -1178,9 +1178,9 @@ class CPU:
         # Pop register pair (rh) <- (SP), (rl) <- ((SP) +1),  (SP) <- (SP) +2
         rh, rl = self.decode_rp()
         self.pop_stack()
-        rh.value = self.data_bus
-        self.pop_stack()
         rl.value = self.data_bus
+        self.pop_stack()
+        rh.value = self.data_bus
 
     def poppsw(self):
         # Pop Status Word (F) <- (SP), (A) <- ((SP) +1),  (SP) <- (SP) +2
@@ -1211,6 +1211,7 @@ class CPU:
 
     def in_port(self):
         """Input (A) <- (data)"""
+        self.fetch_byte()
         if self.data_bus == 1: # pseudo keyboard input port
             # cheat and read the buffer direct rather than pass through data bus
             if len(self.input_buffer) > 0:
@@ -1219,6 +1220,7 @@ class CPU:
 
     def out_port(self):
         """Output (data) <- (A)"""
+        self.fetch_byte()
         if self.data_bus == 2: # pseudo terminal output port
             self.output_buffer.append(self.A.value)
         self.cycles += 2

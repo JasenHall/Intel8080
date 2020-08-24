@@ -2,6 +2,7 @@
 Monitor for 8080 processor
 """
 from cpu import CPU
+import re
 
 
 class Monitor:
@@ -9,7 +10,7 @@ class Monitor:
     def __init__(self, cpu):
         self.cpu = cpu
         # set stack pointer
-        self.cpu.SP = 0xEE00
+        self.cpu.SP = self.cpu.set_stackpointer(0xEE00)
         self.current_address = 0
         self.command = ""
         self.operand = ""
@@ -26,9 +27,16 @@ class Monitor:
             "SAVE": self.save,
             "LOAD": self.load,
         }
+    def help(self):
+        print("Commands")
+        print("--------")
+        print("a hhhh  - set current address to hhhh where hhhh is hex value 0 to FFFF")
+        print("d (hhhh lines) - disassemble lines from address hhhh")
+        print("i (hhhh)  - edit hex values starting from address hhhh")
+        print("g (addr) - start executing code from address hhhh")
 
-    def disasm(self):
-        addr = self.current_address
+    def disasm(self, addr = None):
+        addr = self.current_address if addr is None else addr
         try:
             number = int(self.operand)
         except ValueError:
@@ -58,49 +66,52 @@ class Monitor:
             print(output)
 
     def memory_dump(self):
-        """Returns a list of memory locations for screen output
+        """Returns a memory page for screen output
         param: address - will be a 1K page value from memory"""
-        page = int(self.current_address / 256)
-        address = page * 256
-        line = "       00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\n"
-        line += "       -----------------------------------------------\n"
-        for z in range(address, address + 256):
-            data = self.cpu.memory[z]
-            #  initial line for memory page
-            if z == 0:  # first page
-                line += "${:04X}  ".format(z)
-                line += "{:02X} ".format(data)
-            elif z % 256 == 0:  # any other page apart from first
-                line += "\n"
-                line += "${:04X}  ".format(z)
-                line += "{:02X} ".format(data)
-            elif z % 16 == 0:  # if 16th data location then break a new line
-                line += "\n"
-                line += "${:04X}  ".format(z)
-                line += "{:02X} ".format(data)
-            else:  # anything else just add the data to the current line
-                line += "{:02X} ".format(data)
-        line += "\n"  # add the last line created dummy!!!
-        print(line)
+        addr = self.validate_address()
+        if addr >= 0:
+            page = int(addr / 256)
+            address = page * 256
+            line = "       00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\n"
+            line += "       -----------------------------------------------\n"
+            for z in range(address, address + 256):
+                data = self.cpu.memory[z]
+                #  initial line for memory page
+                if z == 0:  # first page
+                    line += "${:04X}  ".format(z)
+                    line += "{:02X} ".format(data)
+                elif z % 256 == 0:  # any other page apart from first
+                    line += "\n"
+                    line += "${:04X}  ".format(z)
+                    line += "{:02X} ".format(data)
+                elif z % 16 == 0:  # if 16th data location then break a new line
+                    line += "\n"
+                    line += "${:04X}  ".format(z)
+                    line += "{:02X} ".format(data)
+                else:  # anything else just add the data to the current line
+                    line += "{:02X} ".format(data)
+            line += "\n"  # add the last line created dummy!!!
+            print(line)
 
     def insert_memory(self):
         exit = False
-        addr = self.current_address
-        while not exit:
-            value = input("{:04X}: {:02X} -".format(addr, self.cpu.memory[addr])).upper()
-            if value == " ":
-                addr += 1
-            elif value == "":
-                exit = True
-            else:
-                try:
-                    val = int(value, 16)
-                    if val > 255:
-                        raise ValueError("Value out of range")
-                    self.cpu.memory[addr] = val
-                    addr = addr + 1
-                except ValueError as e:
-                    print(e)
+        addr = self.validate_address()
+        if addr >= 0:
+            while not exit:
+                value = input("{:04X}: {:02X} -".format(addr, self.cpu.memory[addr])).upper()
+                if value == " ":
+                    addr += 1
+                elif value == "":
+                    exit = True
+                else:
+                    try:
+                        val = int(value, 16)
+                        if val > 255:
+                            raise ValueError("Value out of range")
+                        self.cpu.memory[addr] = val
+                        addr = addr + 1
+                    except ValueError as e:
+                        print(e)
 
     def show_registers(self):
         """ Show CPU registers"""
@@ -120,20 +131,37 @@ class Monitor:
         while self.cpu.halt is False:
             self.cpu.fetch_instruction()
             self.cpu.execute_instruction()
+            self.check_out_buffer()
+
+    def check_out_buffer(self):
+        if len(self.cpu.output_buffer) > 0 and self.cpu.output_buffer[-1] == 0:
+            self.cpu.output_buffer.pop()
+            output = ""
+            for c in self.cpu.output_buffer:
+                output += chr(c)
+            print(output)
+            # clear buffer
+            self.cpu.output_buffer = []
+
 
     def step(self):
+        addr = self.cpu.PC
         self.cpu.fetch_instruction()
+        self.operand =1
+        self.disasm(addr)
         self.cpu.execute_instruction()
         print("OK")
+        self.show_registers()
+        self.check_out_buffer()
 
     def set_address(self):
         addr = self.validate_address()
-        if addr is not None:
+        if addr >= 0:
             self.current_address = addr
 
     def set_pc(self):
         addr = self.validate_address()
-        if addr is not None:
+        if addr >= 0:
             self.cpu.PC = addr
 
     def reset(self):
@@ -141,6 +169,8 @@ class Monitor:
         self.cpu.SP = 0
 
     def validate_address(self):
+        if self.operand == "":
+            return self.current_address
         try:
             addr = int(self.operand, 16)
             if addr > 0xFFFF:
@@ -149,13 +179,15 @@ class Monitor:
                 return addr
         except ValueError:
             print("Invalid address")
+            return -1
 
     def parse(self, text):
         """Simple break down of commands for now"""
         self.command = self.operand = ""
+        text = text.strip()  # strip leading and trailing spaces
+        text = re.sub(" +", " ", text)  # substitute multiple whitespace for single space
         if text != "":
             text = text.split(" ")
-            print(text)
             self.command = text[0].upper()
             if len(text) > 1:
                 self.operand = text[1].upper()
@@ -180,7 +212,7 @@ def main():
     ##########################
     cmd = None
     while cmd != "EXIT":
-        text = input("{:04X}>".format(mon.current_address))
+        text = input("${:04X}: >".format(mon.current_address))
         mon.parse(text)
         if mon.command in mon.command_map:
             mon.command_map.get(mon.command)()
