@@ -26,6 +26,7 @@ class Monitor:
             "X": self.reset,
             "SAVE": self.save,
             "LOAD": self.load,
+            "?": self.prnt_ins,
         }
     def help(self):
         print("Commands")
@@ -34,6 +35,9 @@ class Monitor:
         print("d (hhhh lines) - disassemble lines from address hhhh")
         print("i (hhhh)  - edit hex values starting from address hhhh")
         print("g (addr) - start executing code from address hhhh")
+
+    def prnt_ins(self):
+        print(self.cpu.instruction_list)
 
     def disasm(self, addr = None):
         addr = self.current_address if addr is None else addr

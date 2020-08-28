@@ -312,6 +312,9 @@ class CPU:
             0xFF: {"Instruction": "RST 7", "Bytes": 1, "Method": self.rst},
         }
 
+        self.mnemonic = {v.get("Instruction"): k for (k, v) in self.opcodes.items() if v.get("Instruction")[0] != "*"}
+        self.commands = self.get_command_list
+
     @property
     def F(self):
         # Flag Register - SZ0A0P1C
@@ -328,6 +331,23 @@ class CPU:
     ############################################
     #          helper functions                #
     ############################################
+
+    def get_instructions(self):
+        ins = {}
+        for op in self.opcodes:
+            cmd = self.opcodes.get(op).get("Instruction")
+            if cmd[0] != "*":
+                ins.update({cmd: op})
+        return ins
+
+    def get_command_list(self):
+        lst = {}
+        for op in self.opcodes:
+            cmd = self.opcodes.get(op).get("Instruction")
+            bytes = self.opcodes.get(op).get("Bytes")
+            cmd = cmd.split(" ")
+            lst.update({cmd[0]: bytes})
+        return lst
 
     def show_registers(self):
         output = "PC > {:04X}".format(self.PC)
