@@ -1,10 +1,13 @@
-        LXI H,0xAA00
-loop:   MOV A,M
-        OUT 0x02
-        INX H
-        CPI 0x00
-        JNZ loop
-        HLT
-        NOP
-        NOP
-        NOP
+MOV B,B
+loop:
+MOV A,C
+;        LXI H,0xAA00
+;loop:   MOV A,M
+;        OUT 0x02
+;        INX H
+;        CPI 0x00
+;        JNZ loop
+;        HLT
+;        NOP
+;        NOP
+;        NOP

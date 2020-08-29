@@ -7,9 +7,29 @@
 # Definitely needs a parser
 # from <file> import <something>
 from cpu import CPU
-import re
+import enum
 
+registers = {
+    "B": 0,
+    "C": 1,
+    "D": 2,
+    "E": 3,
+    "H": 4,
+    "L": 5,
+    "M": 6,
+    "A": 7,
+}
 
+commands = {
+    "MOV",
+    "NOP",
+    "INX",
+    "LXI",
+    "STAX",
+    "INR",
+    "DCR",
+    "MVI"
+}
 class Token:
     def __init__(self, type, val):
         self.value = val
@@ -27,7 +47,7 @@ class Tokentype(enum.Enum):
     RPAREN = "RPAREN"
     STRING = "STRING"
     IDENTIFIER = "IDENTIFIER"
-    EOF = "EOF"
+    EOL = "EOL"
     SEMI = "SEMI"
     LT = "LT"
     LTE = "LTE"
@@ -39,6 +59,7 @@ class Tokentype(enum.Enum):
     COMMENT = "COMMENT"
     REGISTER = "REGISTER"
     HEX = "HEX"
+    COMMA = "COMMA"
 
 
 
@@ -88,7 +109,7 @@ class Lexer:
             self.advance()
 
     def hex(self):
-        "Return hex value consumed from input"
+        """Return hex value consumed from input"""
         result = ""
         while self.current_char is not None and self.current_char.isalnum():
             result += self.current_char
@@ -107,7 +128,10 @@ class Lexer:
 
     def peek(self):
         """Peek at the next character without advancing"""
-        return self.text[self.pos + 1]
+        if self.pos == len(self.text) - 1:
+            return None
+        else:
+            return self.text[self.pos + 1]
 
     def get_next_token(self):
         """Lexical analyzer (also known as scanner or tokenizer)
@@ -128,48 +152,48 @@ class Lexer:
                 return Token(Tokentype.INTEGER, self.integer())
 
             if self.current_char == "A":
-                if self.peek() == "," or self.peek() == " ":  # register A
+                if self.peek() == "," or self.peek() == " " or self.peek() is None:  # register A
                     self.advance()
                     return Token(Tokentype.REGISTER, "A")
 
             if self.current_char == "B":
-                if self.peek() == "," or self.peek() == " ":  # register B
+                if self.peek() == "," or self.peek() == " " or self.peek() is None:  # register B
                     self.advance()
                     return Token(Tokentype.REGISTER, "B")
 
             if self.current_char == "C":
-                if self.peek() == "," or self.peek() == " ":  # register C
+                if self.peek() == "," or self.peek() == " " or self.peek() is None:  # register C
                     self.advance()
                     return Token(Tokentype.REGISTER, "C")
 
             if self.current_char == "D":
-                if self.peek() == "," or self.peek() == " ":  # register D
+                if self.peek() == "," or self.peek() == " " or self.peek() is None:  # register D
                     self.advance()
                     return Token(Tokentype.REGISTER, "D")
 
             if self.current_char == "E":
-                if self.peek() == "," or self.peek() == " ":  # register E
+                if self.peek() == "," or self.peek() == " " or self.peek() is None:  # register E
                     self.advance()
                     return Token(Tokentype.REGISTER, "E")
 
             if self.current_char == "H":
-                if self.peek() == "," or self.peek() == " ":  # register H
+                if self.peek() == "," or self.peek() == " " or self.peek() is None:  # register H
                     self.advance()
                     return Token(Tokentype.REGISTER, "H")
 
             if self.current_char == "L":
-                if self.peek() == "," or self.peek() == " ":  # register L
+                if self.peek() == "," or self.peek() == " " or self.peek() is None:  # register L
                     self.advance()
                     return Token(Tokentype.REGISTER, "L")
 
             if self.current_char == "M":
-                if self.peek() == "," or self.peek() == " ":  # memory location
+                if self.peek() == "," or self.peek() == " " or self.peek()  is None:  # memory location
                     self.advance()
                     return Token(Tokentype.REGISTER, "M")
 
             if self.current_char.isalpha():  # must start with alpha char
                 value = self.identifier()
-                if value.upper in self.cpu.commands:
+                if value.upper() in commands:
                     return Token(Tokentype.COMMAND, value)
                 else:
                     return Token(Tokentype.IDENTIFIER, value)
@@ -214,6 +238,10 @@ class Lexer:
                 self.advance()
                 return Token(Tokentype.COLON, ':')
 
+            if self.current_char == ',':
+                self.advance()
+                return Token(Tokentype.COMMA, ',')
+
             if self.current_char == ">":
                 if self.peek() == "=":
                     self.advance()
@@ -238,7 +266,7 @@ class Lexer:
 
             self.error()
 
-        return Token(Tokentype.EOF, None)
+        return Token(Tokentype.EOL, None)
 
 
 class Assembler:
@@ -259,54 +287,72 @@ class Assembler:
         self.errorlist = []
         self.line = None
         self.lineno = 0
-        self.current_token = None
+        self.command_list = {
+            "MOV": self.mov,
+        }
 
     def consume(self, content):
         # consume a token and advance if the current token matches else error
-        if self.current_token.type == content:
-            self.current_token = self.lexer.get_next_token()
+        if self.lexer.current_token.type == content:
+            self.lexer.current_token = self.lexer.get_next_token()
         else:
-            self.error()
+            self.error("Syntax Error")
 
-    def assemble_line(self, text):
+    def assemble_line(self):
         """Assembles a line of text.
            (identifier)? command (";" comment)?
         """
         self.label = self.command = self.operand = ""
-        self.lexer.text = text
+        self.lexer.text = self.line
+        self.lexer.pos = 0
+        self.lexer.current_char = self.lexer.text[self.lexer.pos]
         self.lexer.current_token = self.lexer.get_next_token()
         # process identifier if present
         while self.lexer.current_token.type == Tokentype.IDENTIFIER:
-            token = self.current_token
+            token = self.lexer.current_token
             self.consume(Tokentype.IDENTIFIER)
             self.st.update({token.value: self.counter})
             self.label = token.value
         # process command
-        self.execute_command()
+        while self.lexer.current_token.type == Tokentype.COMMAND:
+            self.execute_command()
         # process comment if present
         while self.lexer.current_token.type == Tokentype.COMMENT:
             self.consume(Tokentype.COMMENT)
 
-        # if command is a psuedo command then perform the action
-        if self.command in self.commands:
-            self.commands.get(self.command)()  # execute psuedo command
-        else:
-            # do the real command assembly here
-            if self.operand == "":
-                instruction = self.command
-            else:
-                instruction = self.command + " " + self.operand
-            if instruction in self.cpu.mnemonic:
-                # single byte direct hit
-                self.asmram[self.counter] = self.cpu.mnemonic.get(instruction)
-                self.counter += 1
-            else:
-                self.insert_address()
+        # # if command is a psuedo command then perform the action
+        # if self.command in self.commands:
+        #     self.commands.get(self.command)()  # execute psuedo command
+        # else:
+        #     # do the real command assembly here
+        #     if self.operand == "":
+        #         instruction = self.command
+        #     else:
+        #         instruction = self.command + " " + self.operand
+        #     if instruction in self.cpu.mnemonic:
+        #         # single byte direct hit
+        #         self.asmram[self.counter] = self.cpu.mnemonic.get(instruction)
+        #         self.counter += 1
+        #     else:
+        #         self.insert_address()
 
     def execute_command(self):
         """ command ( expression ("," expression)? )? """
+        token = self.lexer.current_token
+        self.consume(Tokentype.COMMAND)
+        opcode = self.command_list.get(token.value)()
+        print("Command {:08b} - {:02X}".format(opcode,opcode))
 
-
+    def mov(self):
+        dst = self.lexer.current_token
+        self.consume(Tokentype.REGISTER)
+        self.consume(Tokentype.COMMA)
+        src = self.lexer.current_token
+        self.consume(Tokentype.REGISTER)
+        if src.value == "M" and dst.value == "M":
+            self.error("Invalid register - M,M")
+        # mov command 01dddsrc
+        return (1 << 6 ) | (registers.get(dst.value) << 3) | registers.get(src.value)
 
     def insert_address(self):
         if "," in self.operand:
@@ -350,7 +396,7 @@ class Assembler:
             self.error("Invalid Address")
 
     def error(self, msg = "Invalid Command"):
-        msg = "Error - line {}: {} >> {} <<".format(self.lineno,self.line, msg)
+        msg = "Line {}: {} :> {} ".format(self.lineno, self.line, msg)
         self.errorlist.append(msg)
 
 
@@ -367,8 +413,9 @@ class Assembler:
         with open("sample.src", "r") as file:
             for line in file:
                 self.lineno += 1
-                self.line = line
-                self.assemble_line(line)
+                self.line = line[:-1]
+                if self.line[0] != ";":
+                    self.assemble_line()
 
     def save_binary(self):
         with open("sample.bin", "wb") as file:

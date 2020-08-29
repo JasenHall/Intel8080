@@ -314,6 +314,7 @@ class CPU:
 
         self.mnemonic = {v.get("Instruction"): k for (k, v) in self.opcodes.items() if v.get("Instruction")[0] != "*"}
         self.commands = self.get_command_list
+        print(self.commands)
 
     @property
     def F(self):
