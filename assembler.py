@@ -20,6 +20,13 @@ registers = {
     "A": 7,
 }
 
+registerpair = {
+    "B": 0,
+    "D": 1,
+    "H": 2,
+    "SP": 3,
+}
+
 commands = {
     "MOV",
     "NOP",
@@ -111,10 +118,11 @@ class Lexer:
     def hex(self):
         """Return hex value consumed from input"""
         result = ""
-        while self.current_char is not None and self.current_char.isalnum():
+        while self.current_char is not None and self.current_char in "0123456789ABCDEF":
             result += self.current_char
             self.advance()
         return int(result, 16)
+
 
     def string(self):
         """Return a string consumed from the input."""
@@ -289,6 +297,8 @@ class Assembler:
         self.lineno = 0
         self.command_list = {
             "MOV": self.mov,
+            "MVI": self.mvi,
+            "LXI": self.lxi,
         }
 
     def consume(self, content):
@@ -320,28 +330,75 @@ class Assembler:
         while self.lexer.current_token.type == Tokentype.COMMENT:
             self.consume(Tokentype.COMMENT)
 
-        # # if command is a psuedo command then perform the action
-        # if self.command in self.commands:
-        #     self.commands.get(self.command)()  # execute psuedo command
-        # else:
-        #     # do the real command assembly here
-        #     if self.operand == "":
-        #         instruction = self.command
-        #     else:
-        #         instruction = self.command + " " + self.operand
-        #     if instruction in self.cpu.mnemonic:
-        #         # single byte direct hit
-        #         self.asmram[self.counter] = self.cpu.mnemonic.get(instruction)
-        #         self.counter += 1
-        #     else:
-        #         self.insert_address()
-
     def execute_command(self):
         """ command ( expression ("," expression)? )? """
-        token = self.lexer.current_token
+        self.command = self.lexer.current_token.value.upper()
         self.consume(Tokentype.COMMAND)
-        opcode = self.command_list.get(token.value)()
-        print("Command {:08b} - {:02X}".format(opcode,opcode))
+        opcode = self.command_list.get(self.command)()
+        # verbose code
+        output = "Line {} {} :> Command {:02X} : ".format(self.lineno, self.line,opcode[0],opcode[0])
+        if len(opcode) == 2:
+            output += "Data {:02X}".format(opcode[1])
+        elif len(opcode) == 3:
+            addr = opcode[2] << 8 | opcode[1]
+            output += "Address {:04X}".format(addr)
+        print(output)
+        # insert values into Assembler RAM
+        for i in opcode:
+            self.asmram[self.counter] = i
+            self.counter += 1
+
+    def single(self):
+        if self.command == "NOP":
+            return [0x76]
+        elif self.command == "RLC":
+            return [0xdd]
+        elif self.command == "RRC":
+            return [0xdD]
+        elif self.command == "RAL":
+            return [0xdd]
+        elif self.command == "RAR":
+            return [0xdD]
+        elif self.command == "DAA":
+            return [0xdd]
+        elif self.command == "CMA":
+            return [0xdD]
+        elif self.command == "STC":
+            return [0xdd]
+        elif self.command == "CMC":
+            return [0xdD]
+        elif self.command == "HLT":
+            return [0xdd]
+        elif self.command == "RNZ":
+            return [0xDd]
+        elif self.command == "RZ":
+            return [0xDd]
+        elif self.command == "RET":
+            return [0xDd]
+        elif self.command == "RNC":
+            return [0xDd]
+        elif self.command == "RC":
+            return  0xD8
+        elif self.command == "RPO":
+            return [0xDd]
+        elif self.command == "XTHL":
+            return [0xDd]
+        elif self.command == "RPE":
+            return [0xDd]
+        elif self.command == "PCHL":
+            return [0xDd]
+        elif self.command == "XCHG":
+            return [0xDD]
+        elif self.command == "RP":
+            return [0xDd]
+        elif self.command == "DI":
+            return [0xDd]
+        elif self.command == "RM":
+            return [0xDd]
+        elif self.command == "SPHL":
+            return [0xDd]
+        elif self.command == "EI":
+            return [0xDD]
 
     def mov(self):
         dst = self.lexer.current_token
@@ -352,7 +409,28 @@ class Assembler:
         if src.value == "M" and dst.value == "M":
             self.error("Invalid register - M,M")
         # mov command 01dddsrc
-        return (1 << 6 ) | (registers.get(dst.value) << 3) | registers.get(src.value)
+        return [(1 << 6 ) | (registers.get(dst.value) << 3) | registers.get(src.value)]
+
+    def mvi(self):
+        dst = self.lexer.current_token
+        self.consume(Tokentype.REGISTER)
+        self.consume(Tokentype.COMMA)
+        val = self.lexer.current_token
+        self.consume(Tokentype.INTEGER)
+        return [(registers.get(dst.value) << 3) | 0x06, val.value & 0xFF]
+
+    def lxi(self):
+        rp = self.lexer.current_token
+        self.consume(Tokentype.REGISTER)
+        if rp.value in registerpair:
+            bitval = registerpair.get(rp.value)
+        else:
+            self.error("Invalid register pair")
+            return [0]
+        self.consume(Tokentype.COMMA)
+        val = self.lexer.current_token
+        self.consume(Tokentype.INTEGER)
+        return [(bitval << 4) | 0x01, val.value & 0xFF, val.value >> 8]
 
     def insert_address(self):
         if "," in self.operand:

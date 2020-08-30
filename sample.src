@@ -1,6 +1,12 @@
 MOV B,B
 loop:
 MOV A,C
+MVI D,$FX
+MVI A,$42
+LXI B,256
+LXI H, $100
+LXI E, 123
+LXI SP,$AABB
 ;        LXI H,0xAA00
 ;loop:   MOV A,M
 ;        OUT 0x02
